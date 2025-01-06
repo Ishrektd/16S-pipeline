@@ -1,0 +1,39 @@
+#### EDIT AND SAVE THIS AS config.yml ####
+
+## Sample sheet in csv format with 2 columns: sample_id, sample_path
+sample_sheet: /insert/path/here
+
+## Output folder
+output_folder: /insert/path/here
+
+## Path to mmi database
+
+# 16S DB, note .mmi databases are generated from reference taxonomy fasta files using minimap2
+mmi: /insert/path/here
+
+
+## Path to taxonomy tsv file
+tsv: /insert/path/here
+
+threads: 20
+
+## Slurm parameters if using, delete or comment out if not using. Make sure allocated resources match the resources used in apogee script!
+memory: 2000
+use-conda: true
+slurm: true
+default-resources:
+  - slurm_account=""
+  - slurm_partition=""
+
+
+min_read_length: 400 # filter on a minimum read length (NanoFilt)
+quality_score: 12 # filter on a minimum average read quality score (NanoFilt)
+
+mapping_bp: 500 # stop chain enlongation if there are no minimizers in INT-bp (minimap2)
+minibatch_size: 1000M # minibatch size for mapping (minimap2) #NOTE: changed this to 1000M to see if this changes anything
+
+coverage: 4 # if coverage reach this value, region is marked as bad (yacrd)
+not_coverage: 0.4 # if the ratio of bad region length on total length is lower than this value, read is marked as NotCovered (yacrd)
+
+filter_paf_block_limit: 350 # Hits with a block length alingment lower than this parameter will be removed (filterPAF.py)
+filter_paf_min_confidence: 0 # Minimum confidence level, default is 0

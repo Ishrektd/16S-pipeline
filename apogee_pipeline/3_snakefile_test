@@ -1,0 +1,93 @@
+configfile: ""
+
+include: "common.smk"
+
+check_config()
+
+workdir: config["output_folder"]
+
+rule all:
+    input:
+        f"otu_table/phyloseq_taxonomy.csv"
+        
+rule remove_adapter:
+    input:
+        get_fastq
+    output:
+        "porechop/{sample}-porechop.fastq"
+    shell:
+        "porechop -t {config[threads]} -i {input} -o {output}"
+
+rule filter_length:
+    input:
+        "porechop/{sample}-porechop.fastq"
+    output:
+        "nanofilt/{sample}-porechop-nanofilt.fastq"
+    shell:
+        """
+        cat {input} | NanoFilt -l {config[min_read_length]} > {output}
+        mkdir -p nanostat
+        NanoStat -t {config[threads]} --fastq {output} > nanostat/{wildcards.sample}-porechop-nanofilt-NanoStat.txt
+        """
+
+rule remove_chimera:
+    input:
+        "nanofilt/{sample}-porechop-nanofilt.fastq"
+    output:
+        paf = temp("nanofilt/{sample}-porechop-nanofilt.paf"),
+        yacrd = "yacrd/{sample}-porechop-nanofilt.yacrd",
+        scrubb = "yacrd/{sample}-porechop-nanofilt.scrubb.fastq"
+    shell:
+        """
+        minimap2 -x ava-ont -g {config[mapping_bp]} -t {config[threads]} -f1000 {input} {input} > {output.paf}
+        yacrd -i {output.paf} -o {output.yacrd} -c {config[coverage]} -n {config[not_coverage]} scrubb -i {input} -o {output.scrubb}
+        """
+
+rule filter_quality:
+    input:
+        "yacrd/{sample}-porechop-nanofilt.scrubb.fastq"
+    output:
+        "yacrd/{sample}-porechop-nanofilt.scrubb.refilt.fastq"
+    shell:
+        "cat {input} | NanoFilt -q {config[quality_score]} > {output}"
+
+rule mapping:
+    input:
+        "yacrd/{sample}-porechop-nanofilt.scrubb.refilt.fastq"
+    output:
+        "mapping/{sample}-porechop-nanofilt.scrubb.refilt.paf"
+    shell:
+        "minimap2 -x map-ont -t {config[threads]} --secondary=no -K {config[minibatch_size]} {config[mmi]} -f1000 {input} > {output}"
+
+rule filter_paf:
+    input:
+        "mapping/{sample}-porechop-nanofilt.scrubb.refilt.paf"
+    output:
+        "filteredPAFs/{sample}-porechop-nanofilt.scrubb.refilt-f.paf"
+    script:
+        "scripts/filter_paf.py"
+
+rule list_filtered_paf:
+    input:
+        unpack(get_pafs)
+    output:
+        temp("filteredPAFs/samplesheet.tsv")
+    run:
+        data = [ dict(name=k, path=v) for k, v in input.items() ]
+        pl.DataFrame(data).write_csv(str(output), separator="\t", include_header=False)
+
+rule summarize_paf:
+    input:
+        "filteredPAFs/samplesheet.tsv"
+    output:
+        "otu_table/otu_table.csv"
+    shell:
+        f"python {workflow.source_path('scripts/summarize_paf.py')} {{input}} {{output}} --min_confidence {config['filter_paf_min_confidence']}"
+
+rule create_taxonomy_table:
+    input:
+        "otu_table/otu_table.csv"
+    output:
+        f"otu_table/phyloseq_taxonomy.csv"
+    shell:
+        f"python {workflow.source_path('scripts/generate_taxonomy.py')} --taxonomy_file {config['tsv']} {{input}} {{output}}"
